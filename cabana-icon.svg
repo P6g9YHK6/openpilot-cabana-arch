@@ -1,7 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <!-- Nice blue/teal gradient circular background -->
-  <circle cx="32" cy="32" r="28" fill="#3b82f6"/>
-  <!-- Clean white pulse line -->
-  <path d="M48 32h-4.96a4 4 0 0 0-3.86 2.92l-4.7 16.72a0.5 0 0 1-.96 0L22.48 12.36a0.5 0 0 0-.96 0l-4.7 16.72A4 4 0 0 1 12.96 32H8" 
-        stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity-icon lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
