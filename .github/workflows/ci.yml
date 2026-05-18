@@ -1,0 +1,173 @@
+name: AUR Commit Automation
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+  workflow_dispatch:      # Keep manual trigger for testing
+
+env:
+  SOURCE_REPO: https://github.com/deanlee/openpilot-cabana.git
+
+jobs:
+  sync-upstream:
+    # Only run the sync job on schedule or manual triggers
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: archlinux:latest
+    container: archlinux/archlinux:base
+    steps:
+      - name: Install git
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git
+
+      # We need to authenticate using a deploy key or token to push to the fork
+      - name: Sync from upstream
+        run: |
+          set -e
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git /tmp/sync-repo
+          cd /tmp/sync-repo
+          git remote add upstream ${{ env.SOURCE_REPO }}
+          git fetch upstream main --quiet
+          
+          BEHIND=$(git rev-list HEAD..upstream/main --count 2>/dev/null || echo "0")
+          echo "Upstream is $BEHIND commits ahead of fork"
+          
+          if [ "$BEHIND" = "0" ]; then
+            echo "Already up to date"
+            exit 0
+          fi
+          
+          # Setup git identity
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Merge upstream commits and push to trigger the build/publish
+          git merge upstream/main --no-edit --quiet
+          git push origin main
+
+  aur-publish:
+    # Only publish on pushes to main (which includes commits pushed by the sync-upstream job)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: archlinux:latest
+    container: archlinux/archlinux:base
+    steps:
+      - name: Install AUR tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git base-devel fakeroot
+
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Update AUR Package
+        run: |
+          git clone aur@aur.archlinux.org:openpilot-cabana.git /tmp/aur-pkg
+          cd /tmp/aur-pkg
+          
+          # Get commit details from the checked out fork
+          cd /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          cd /tmp/aur-pkg
+          
+          # Copy desktop file, icon, and patches from the fork repository checkout
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/SConstruct .
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/src/SConscript .
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/replay/SConstruct .
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/replay/msgq/SConstruct .
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/cabana.desktop .
+          cp /home/runner/work/openpilot-cabana-arch/openpilot-cabana-arch/cabana-icon.svg .
+          
+          # Generate clean Arch patch file
+          git diff SConstruct src/SConscript replay/SConstruct replay/msgq/SConstruct > archlinux.patch
+          
+          # Re-create PKGBUILD from our template (pointing to deanlee/openpilot-cabana upstream)
+          cat > PKGBUILD << 'PKGEOF'
+          # Maintainer: Your Name <your.email@example.com>
+          pkgname=openpilot-cabana
+          _pkgname=openpilot-cabana-arch
+          pkgver=1.1.2
+          pkgrel=2
+          epoch=1
+          pkgdesc="CAN Bus Visualizer & Analyzer - Qt-based graphical tool for viewing, analyzing, and reverse-engineering raw CAN bus data"
+          arch=('x86_64')
+          url="https://github.com/P6g9YHK6/openpilot-cabana-arch"
+          license=('MIT')
+          depends=(
+            'capnproto'
+            'zeromq'
+            'curl'
+            'openssl'
+            'bzip2'
+            'ffmpeg'
+            'libxkbcommon'
+            'libxcb'
+            'libx11'
+            'libglvnd'
+            'ocl-icd'
+            'qt6-base'
+            'qt6-svg'
+            'qt6-tools'
+            'qt6-charts'
+            'qt6-serialbus'
+            'libusb'
+            'zstd'
+            'python'
+            'python-numpy'
+            'cython'
+            'scons'
+            'clang'
+          )
+          makedepends=('python-pip' 'git')
+          provides=('cabana')
+          conflicts=('openpilot-cabana-git')
+          options=(!lto)
+          
+          source=("git+https://github.com/P6g9YHK6/openpilot-cabana-arch.git#tag=v${pkgver}"
+                  'archlinux.patch'
+                  'cabana.desktop'
+                  'cabana-icon.svg')
+          sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+          
+          prepare() {
+            cd "$_pkgname"
+            git submodule update --init --recursive
+            patch -p1 -i "$srcdir/archlinux.patch"
+          }
+          
+          build() {
+            cd "$_pkgname"
+            python -m venv build_venv
+            source build_venv/bin/activate
+            pip install scons numpy cython setuptools pycapnp
+            scons --cache-disable
+          }
+          
+          package() {
+            cd "$_pkgname"
+            install -Dm755 cabana "$pkgdir/usr/bin/cabana"
+            install -dm755 "$pkgdir/usr/share/cabana"
+            cp -r data assets "$pkgdir/usr/share/cabana/"
+            install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+            install -Dm644 ../../cabana.desktop "$pkgdir/usr/share/applications/cabana.desktop"
+            install -Dm644 ../../cabana-icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/cabana.svg"
+          }
+          PKGEOF
+          
+          # Generate new .SRCINFO with correct metadata
+          makepkg --printsrcinfo > .SRCINFO
+          
+          # Commit and Push back to AUR
+          git add -A
+          git commit -m "Auto-update AUR: commit $COMMIT_COUNT ($COMMIT_HASH)" || echo "No changes to commit"
+          git push

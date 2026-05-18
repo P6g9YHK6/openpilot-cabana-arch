@@ -51,6 +51,8 @@ env = Environment(
     "-fPIC",
     "-O2",
     "-Wunused",
+    "-Wno-deprecated-this-capture",
+    "-Wno-deprecated-declarations",
     "-Werror",
     "-Wshadow",
     "-Wno-unknown-warning-option",
