@@ -109,6 +109,8 @@ jobs:
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
+          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -i $HOME/.ssh/id_ed25519"
+
           if [ -z "$PKGVER" ] || [ -z "$COMMIT" ]; then
             echo "Missing PKGVER or COMMIT"
             exit 1
