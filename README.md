@@ -42,6 +42,14 @@ See [Prerequisites](#prerequisites) and [Clone, Compile](#clone-compile) below.
 
 Before running or compiling **openpilot-cabana**, install these dependencies.
 
+### Arch Linux (AUR)
+
+If you are on Arch Linux, you can install Cabana directly from the AUR:
+
+```bash
+yay -S openpilot-cabana
+```
+
 ### Ubuntu / Debian
 
 ```bash
