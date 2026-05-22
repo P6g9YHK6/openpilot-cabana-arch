@@ -55,7 +55,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/main --no-edit
+          git merge upstream/main --no-commit --no-edit 2>&1 || true
+          # For Arch-patched files: keep fork's version if conflicted
+          for f in SConstruct src/SConscript; do
+            if git diff --name-only --diff-filter=U | grep -qxF "$f"; then
+              git checkout --ours -- "$f" && git add "$f"
+            fi
+          done
+          # For any remaining conflicts, accept upstream
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            git checkout --theirs -- $(git diff --name-only --diff-filter=U)
+            git add -A
+          fi
+          git commit -m "Merge upstream/main" || echo "Nothing to commit"
           git submodule update --init --recursive
           git push 'https://x-access-token:${{ secrets.SYNC_PAT }}@github.com/${{ github.repository }}.git' main
 
