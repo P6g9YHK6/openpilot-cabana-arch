@@ -92,11 +92,11 @@ jobs:
           chmod 700 ~/.ssh
           echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          cat > ~/.ssh/config << 'SSHEOF'
-          Host aur.archlinux.org
-            StrictHostKeyChecking accept-new
-            IdentityFile ~/.ssh/id_ed25519
-          SSHEOF
+          {
+            echo "Host aur.archlinux.org"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  IdentityFile ~/.ssh/id_ed25519"
+          } > ~/.ssh/config
           chmod 600 ~/.ssh/config
           ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>&1 || true
 
