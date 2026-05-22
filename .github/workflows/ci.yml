@@ -23,7 +23,7 @@ jobs:
       - name: Install runtime tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git openssh sudo
+          pacman -S --noconfirm git openssh sudo ca-certificates
 
       - name: Checkout fork
         uses: actions/checkout@v4
@@ -31,11 +31,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.SYNC_PAT || github.token }}
 
+      - name: Mark repository as safe for git
+        run: |
+          git config --global --add safe.directory '*'
+
       - name: Add upstream and check for new commits
         run: |
           git remote add upstream $UPSTREAM_REPO
-          git fetch upstream main --tags 2>&1
-          BEHIND=$(git rev-list HEAD..upstream/main --count 2>/dev/null || echo "0")
+          git fetch upstream --tags || true
+          UPSTREAM_HEAD=$(git rev-parse upstream/main 2>/dev/null || \
+                          git rev-parse FETCH_HEAD 2>/dev/null)
+          if [ -z "$UPSTREAM_HEAD" ]; then
+            echo "Fetch failed — cannot check upstream"
+            echo "BEHIND=0" >> $GITHUB_ENV
+            exit 0
+          fi
+          BEHIND=$(git rev-list HEAD..$UPSTREAM_HEAD --count 2>/dev/null || echo "0")
           echo "Upstream is $BEHIND commits ahead"
           echo "BEHIND=$BEHIND" >> $GITHUB_ENV
 
