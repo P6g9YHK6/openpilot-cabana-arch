@@ -89,9 +89,16 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          cat > ~/.ssh/config << 'SSHEOF'
+          Host aur.archlinux.org
+            StrictHostKeyChecking accept-new
+            IdentityFile ~/.ssh/id_ed25519
+          SSHEOF
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>&1 || true
 
       - name: Create builder user for makepkg
         run: |
