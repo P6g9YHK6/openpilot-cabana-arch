@@ -88,17 +88,16 @@ jobs:
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          {
-            echo "Host aur.archlinux.org"
-            echo "  StrictHostKeyChecking accept-new"
-            echo "  IdentityFile ~/.ssh/id_ed25519"
-          } > ~/.ssh/config
-          chmod 600 ~/.ssh/config
-          ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>&1 || true
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "$AUR_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> "$HOME/.ssh/known_hosts" 2>&1 || true
+          echo "HOME=$HOME"
+          ls -la "$HOME/.ssh/"
+          head -1 "$HOME/.ssh/id_ed25519"
+          # Test SSH connection to AUR
+          ssh -T -o StrictHostKeyChecking=accept-new -i "$HOME/.ssh/id_ed25519" aur@aur.archlinux.org 2>&1 || true
 
       - name: Create builder user for makepkg
         run: |
