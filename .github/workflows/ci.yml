@@ -95,8 +95,9 @@ jobs:
           ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> "$HOME/.ssh/known_hosts" 2>&1 || true
           echo "HOME=$HOME"
           ls -la "$HOME/.ssh/"
-          head -1 "$HOME/.ssh/id_ed25519"
-          # Test SSH connection to AUR
+          echo "--- public key ---"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" 2>&1 || true
+          echo "--- SSH test ---"
           ssh -T -o StrictHostKeyChecking=accept-new -i "$HOME/.ssh/id_ed25519" aur@aur.archlinux.org 2>&1 || true
 
       - name: Create builder user for makepkg
