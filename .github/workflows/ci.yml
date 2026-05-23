@@ -81,7 +81,11 @@ jobs:
 
       - name: Generate archlinux.patch
         run: |
+          echo "CWD: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "upstream refs:"; git branch -r | grep upstream || echo "(none)"
           git diff upstream/main -- SConstruct src/SConscript > archlinux.patch || true
+          ls -la archlinux.patch 2>&1 || echo "file not created"
           echo "Patch size: $(wc -l < archlinux.patch) lines"
 
       - name: Setup SSH for AUR
@@ -125,10 +129,12 @@ jobs:
             exit 0
           fi
 
-          # Copy assets
-          cp /github/workspace/archlinux.patch .
-          cp /github/workspace/cabana.desktop .
-          cp /github/workspace/cabana-icon.svg .
+          # Copy assets (patch may exist from AUR clone or be regenerated)
+          if [ -f "$GITHUB_WORKSPACE/archlinux.patch" ] && [ -s "$GITHUB_WORKSPACE/archlinux.patch" ]; then
+            cp "$GITHUB_WORKSPACE/archlinux.patch" .
+          fi
+          cp "$GITHUB_WORKSPACE/cabana.desktop" .
+          cp "$GITHUB_WORKSPACE/cabana-icon.svg" .
 
           cat > PKGBUILD << 'PKGEOF'
           # Maintainer: P6g9YHK6 <https://github.com/P6g9YHK6>
