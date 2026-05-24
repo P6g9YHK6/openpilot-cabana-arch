@@ -1,0 +1,37 @@
+name: Build Check
+
+on:
+  workflow_run:
+    workflows: ["AUR Commit Automation"]
+    types: [completed]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.repository == 'P6g9YHK6/openpilot-cabana-arch'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:base-devel
+      options: --user root
+    steps:
+      - name: Install base tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git sudo ca-certificates
+
+      - name: Create builder user
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Clone AUR package
+        run: git clone https://aur.archlinux.org/openpilot-cabana.git /tmp/aur-pkg
+
+      - name: Build package
+        run: |
+          chown -R builder:builder /tmp/aur-pkg
+          cd /tmp/aur-pkg
+          sudo -u builder makepkg -s --noconfirm --needed
+          sudo -u builder makepkg -f

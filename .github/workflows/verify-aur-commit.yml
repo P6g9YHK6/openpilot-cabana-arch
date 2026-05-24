@@ -1,0 +1,57 @@
+name: Verify AUR Commit
+
+on:
+  workflow_run:
+    workflows: ["AUR Commit Automation"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    if: >
+      github.repository == 'P6g9YHK6/openpilot-cabana-arch'
+      && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch upstream refs
+        run: |
+          git init /tmp/verify
+          cd /tmp/verify
+          git remote add origin https://github.com/deanlee/openpilot-cabana.git
+          git fetch --depth=100 origin main
+          echo "UPSTREAM_HEAD=$(git rev-parse origin/main)" >> $GITHUB_ENV
+
+      - name: Get AUR pinned commit
+        run: |
+          PKGBUILD=$(curl -s https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=openpilot-cabana)
+          AUR_COMMIT=$(echo "$PKGBUILD" | grep -oP '#commit=\K[a-f0-9]+')
+          if [ -z "$AUR_COMMIT" ]; then
+            echo "✗ Could not extract commit from AUR PKGBUILD"
+            exit 1
+          fi
+          echo "AUR_COMMIT=$AUR_COMMIT" >> $GITHUB_ENV
+
+      - name: Verify AUR commit freshness
+        run: |
+          cd /tmp/verify
+
+          if [ "$AUR_COMMIT" = "$UPSTREAM_HEAD" ]; then
+            echo "✓ AUR is up to date with upstream HEAD"
+            exit 0
+          fi
+
+          if ! git merge-base --is-ancestor "$AUR_COMMIT" origin/main; then
+            echo "✗ AUR commit $AUR_COMMIT is not in upstream history!"
+            exit 1
+          fi
+
+          AUR_TS=$(git log -1 --format=%ct "$AUR_COMMIT")
+          HEAD_TS=$(git log -1 --format=%ct origin/main)
+          DELTA=$(( HEAD_TS - AUR_TS ))
+
+          if [ "$DELTA" -gt 86400 ]; then
+            echo "✗ AUR behind upstream by $(( DELTA / 3600 ))h (>24h)"
+            exit 1
+          fi
+
+          echo "✓ AUR commit $AUR_COMMIT is $(( DELTA / 3600 ))h behind upstream HEAD (within 24h)"
