@@ -3,7 +3,7 @@ name: Sync AUR package
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - 'aur/**'
 
