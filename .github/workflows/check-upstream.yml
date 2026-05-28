@@ -1,0 +1,88 @@
+name: Check upstream
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/deanlee/openpilot-cabana.git
+          git fetch upstream main --tags
+
+      - name: Check for upstream changes
+        id: check
+        run: |
+          current_sha=$(grep -oP '(?<=commit=)[a-f0-9]{40}' aur/PKGBUILD)
+          upstream_sha=$(git rev-parse FETCH_HEAD)
+          echo "current=$current_sha" >> "$GITHUB_OUTPUT"
+          echo "upstream=$upstream_sha" >> "$GITHUB_OUTPUT"
+          if [ "$current_sha" != "$upstream_sha" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update PKGBUILD
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          upstream_sha="${{ steps.check.outputs.upstream }}"
+          commit_count=$(git rev-list --count v1.1.2.."$upstream_sha")
+          pkgver="1.1.2.${commit_count}.g${upstream_sha}"
+
+          sed -i "s/^pkgver=.*/pkgver=${pkgver}/" aur/PKGBUILD
+          sed -i "s/\(commit=\)[a-f0-9]*/\1${upstream_sha}/" aur/PKGBUILD
+
+      - name: Setup Arch Linux
+        if: steps.check.outputs.changed == 'true'
+        uses: archlinux/actions/setup@v2
+
+      - name: Generate .SRCINFO
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          cd aur
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Commit and push to fork
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "openpilot-cabana-bot"
+          git config user.email "bot@openpilot-cabana"
+          git add aur/PKGBUILD aur/.SRCINFO
+          git commit -m "update AUR package to upstream ${{ steps.check.outputs.upstream }}"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push
+
+      - name: Setup SSH for AUR
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          cat >> ~/.ssh/config << 'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            StrictHostKeyChecking no
+            User aur
+          EOF
+
+      - name: Push to AUR
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git clone aur@aur.archlinux.org:openpilot-cabana.git /tmp/aur-sync
+          rsync -av --delete --exclude='.git' aur/ /tmp/aur-sync/
+          cd /tmp/aur-sync
+          git add -A
+          git diff --quiet && exit 0
+          git commit -m "update AUR package to upstream ${{ steps.check.outputs.upstream }}"
+          git push
