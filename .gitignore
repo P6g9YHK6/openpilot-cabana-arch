@@ -1,4 +1,5 @@
-build/
-cabana
-tests/test_cabana
-*.dblite
+# makepkg output
+aur/pkg/
+aur/src/
+aur/*.pkg.tar.*
+aur/*.log
