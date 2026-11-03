@@ -20,7 +20,9 @@ jobs:
 
       - name: Compare AUR and repository commits
         run: |
-          aur=$(curl -fsSL "https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=openpilot-cabana" | grep -oP "^_commit=\K[a-f0-9]{40}")
+          # Read the git repository directly; the cgit page is cached and lags behind a push.
+          git clone -q --depth 1 https://aur.archlinux.org/openpilot-cabana.git /tmp/aur
+          aur=$(grep -oP "^_commit=\K[a-f0-9]{40}" /tmp/aur/PKGBUILD)
           repo=$(grep -oP "^_commit=\K[a-f0-9]{40}" aur/PKGBUILD)
           echo "AUR:  $aur"
           echo "Repo: $repo"
