@@ -1,9 +1,0 @@
----
-BasedOnStyle: Google
-ColumnLimit: 120
-AllowShortCaseLabelsOnASingleLine: true
-StatementAttributeLikeMacros:
-  - Q_EMIT
-  - emit
-...
-

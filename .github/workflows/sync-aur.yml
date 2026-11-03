@@ -6,34 +6,78 @@ on:
       - main
     paths:
       - 'aur/**'
+  workflow_call:
+    secrets:
+      AUR_SSH_KEY:
+        required: true
+  workflow_dispatch:
 
 jobs:
-  sync-aur:
+  build:
+    if: github.repository == 'P6g9YHK6/openpilot-cabana-arch'
     runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:base-devel
+      options: --user root
     steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm git sudo ca-certificates
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: main
 
-      - name: Setup SSH for AUR
+      - name: Create builder user
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          cat >> ~/.ssh/config << 'EOF'
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur
-            StrictHostKeyChecking no
-            User aur
-          EOF
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          cp -r aur /home/builder/pkg
+          chown -R builder:builder /home/builder/pkg
+
+      - name: Check .SRCINFO is current
+        working-directory: /home/builder/pkg
+        run: sudo -u builder makepkg --printsrcinfo | diff - .SRCINFO
+
+      - name: Build package
+        working-directory: /home/builder/pkg
+        run: sudo -u builder env HOME=/home/builder makepkg -s --noconfirm
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:base-devel
+      options: --user root
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm git openssh rsync ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Push to AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "$AUR_SSH_KEY" > "$HOME/.ssh/aur"
+          chmod 600 "$HOME/.ssh/aur"
+          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new -i $HOME/.ssh/aur"
+
+          source_sha=$(git -c safe.directory="*" rev-parse --short HEAD)
           git clone aur@aur.archlinux.org:openpilot-cabana.git /tmp/aur-sync
-          rsync -av --delete --exclude='.git' aur/ /tmp/aur-sync/
+          rsync -a --delete --exclude=.git aur/ /tmp/aur-sync/
           cd /tmp/aur-sync
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --quiet && exit 0
-          git commit -m "update AUR package to fork commit ${{ github.sha }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "AUR already up to date"
+            exit 0
+          fi
+          git commit -m "Update from openpilot-cabana-arch@$source_sha"
+          git push origin HEAD:master
