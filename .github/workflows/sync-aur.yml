@@ -43,6 +43,42 @@ jobs:
         working-directory: /home/builder/pkg
         run: sudo -u builder env HOME=/home/builder makepkg -s --noconfirm
 
+      - name: Install package
+        run: |
+          pacman -S --noconfirm --needed mesa xorg-server-xvfb xorg-xauth
+          pacman -U --noconfirm /home/builder/pkg/openpilot-cabana-*.pkg.tar.zst
+
+      # A package that builds can still fail at runtime, so run it before publishing.
+      - name: Test installed package
+        working-directory: /home/builder
+        run: |
+          sudo -u builder env HOME=/home/builder bash -euo pipefail <<'EOF'
+          eval "$(grep -E '^(root=|export )' /usr/bin/cabana)"
+          [[ $(command -v python3) == "$root/.venv/bin/python3" ]]
+          python3 --version
+
+          if ldd "$root/openpilot/tools/cabana/cabana" | grep 'not found'; then
+            exit 1
+          fi
+
+          # Asset paths compiled into the binary by prepare().
+          test -d "$root/opendbc_repo/opendbc/dbc"
+          test -d "$root/openpilot/selfdrive/assets/fonts"
+          test -f "$root/.venv/lib/python3.12/site-packages/bootstrap_icons/install/bootstrap-icons.ttf"
+
+          # Python entry points the binary calls at runtime.
+          cabana --help > /dev/null
+          python3 "$root/openpilot/system/webrtc/bridge.py" --help > /dev/null
+          python3 "$root/openpilot/tools/lib/auth.py" --help > /dev/null
+          python3 -m openpilot.tools.lib.file_downloader --help > /dev/null
+          python3 -c 'import openpilot.selfdrive.test.process_replay.migration, openpilot.tools.lib.logreader'
+
+          # Still running when the timeout ends it means the UI started.
+          status=0
+          timeout -s INT 15 xvfb-run -a cabana --no-vipc || status=$?
+          [[ $status == 124 ]]
+          EOF
+
   publish:
     needs: build
     runs-on: ubuntu-latest
